@@ -47,3 +47,67 @@ For the CLI to function, it requires the following artifacts to be placed in its
     strategy-report
     ```
 3.  Follow the interactive prompts to receive a strategic report.
+
+## 5. Deployment & Usage (for End-Users via Docker)
+
+This application and its complex dependencies (Python, NVIDIA CUDA Toolkit, etc.) are packaged into a Docker container for a simple, one-command execution.
+
+**Prerequisites:**
+-   [Docker](https://www.docker.com/products/docker-desktop/) must be installed on your system.
+-   For GPU support, the [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html) must be installed.
+
+**To run the application:**
+
+Open your terminal and execute the following command. Docker will automatically download and run the tool.
+
+```bash
+# Example command (replace with your actual image name)
+docker run --rm -it --gpus all your-repo/financial-strategist-cli:latest
+```
+
+You will be greeted by the interactive prompt to generate a report.
+
+---
+
+## 6. Development Setup (for Contributors)
+
+Developers work in a local Python virtual environment for a fast feedback loop. Docker is used for final packaging, not for day-to-day coding.
+
+**Prerequisites:**
+-   Python 3.12+
+-   `venv` module (usually included with Python)
+
+**Steps:**
+1.  **Clone the repository:**
+    ```bash
+    git clone <your-repository-url>
+    cd financial_strategist_cli
+    ```
+2.  **Create and activate a virtual environment:**
+    -   **Windows (PowerShell):**
+        ```powershell
+        python -m venv .venv
+        .\.venv\Scripts\Activate.ps1
+        ```
+    -   **macOS/Linux:**
+        ```bash
+        python3 -m venv .venv
+        source .venv/bin/activate
+        ```
+3.  **Install dependencies in editable mode:**
+    ```bash
+    pip install -e .
+    ```
+4.  **Run the CLI for testing:**
+    ```bash
+    strategy-report run
+    ```
+
+## 7. Required Assets
+
+For the CLI to function, the following artifacts from the offline pipeline must be placed in the `assets/` directory before building the Docker image:
+
+-   `trained_pipelines.pkl`
+-   `historical_certainty_reports.pkl`
+-   `modeling_datasets.pkl`
+-   `master_performance_report.html` (optional)
