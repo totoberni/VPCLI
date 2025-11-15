@@ -1,7 +1,8 @@
 import pickle
 import os
 import re
-from typing import Dict, Any
+import warnings
+from typing import Dict, Any, List, Tuple
 from collections import defaultdict
 import pandas as pd
 import numpy as np
@@ -17,16 +18,17 @@ def _load_artifact(filename: str) -> Any:
     
     path = os.path.join(ASSETS_DIR, filename)
     if not os.path.exists(path):
-        # A real CLI would use a custom exception and rich-traceback
         print(f"FATAL ERROR: Artifact {filename} not found in {ASSETS_DIR}")
         raise FileNotFoundError(f"Missing required asset: {filename}")
     
     try:
-        with open(path, 'rb') as f:
-            artifact = pickle.load(f)
-            _cache[filename] = artifact
-            print(f"Successfully loaded and cached '{filename}'")
-            return artifact
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", category=UserWarning)
+            with open(path, 'rb') as f:
+                artifact = pickle.load(f)
+        
+        _cache[filename] = artifact
+        return artifact
     except Exception as e:
         print(f"ERROR loading {filename}: {e}")
         raise
@@ -119,13 +121,30 @@ def get_predictive_report(ticker: str, horizon_str: str, show_volatility: bool =
     rules_df.attrs['path_horizons'] = path_horizons
     return rules_df
 
-def get_historical_report(ticker: str, horizon_str: str) -> pd.DataFrame:
+def get_historical_pages(ticker: str, horizon_str: str) -> Tuple[List[pd.DataFrame], List[str]]:
     """
-    Loads and returns the pre-computed historical certainty report.
+    Loads and splits the historical report into a list of pages and titles.
     """
     historical_reports = _load_artifact('historical_certainty_reports.pkl')
     
     if ticker not in historical_reports or horizon_str not in historical_reports[ticker]:
-        return pd.DataFrame()
+        return [], []
         
-    return historical_reports[ticker][horizon_str]
+    report_df = historical_reports[ticker][horizon_str]
+    
+    pages = []
+    page_titles = []
+    current_page_rows = []
+    
+    for _, row in report_df.iterrows():
+        if 'SIGNALS ACTIVE IN:' in str(row.get('Signal_Feature')):
+            if current_page_rows:
+                pages.append(pd.DataFrame(current_page_rows))
+            current_page_rows = []
+            page_titles.append(row['Signal_Feature'])
+        else:
+            current_page_rows.append(row)
+    if current_page_rows:
+        pages.append(pd.DataFrame(current_page_rows))
+
+    return pages, page_titles

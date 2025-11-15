@@ -21,6 +21,7 @@ dependencies = [
     "matplotlib == 3.10.7",
     "seaborn == 0.13.2",
     "plotly == 6.4.0",
+    #"keyboard >= 0.13.5", # For live key press detection
 ]
 
 [project.scripts]

@@ -2,15 +2,15 @@ import pandas as pd
 import re
 import matplotlib
 import matplotlib.pyplot as plt
-from rich.console import Console
+from rich.console import Console, Group
 from rich.table import Table
 from rich import markup
-from rich.prompt import Prompt
+from rich.text import Text
 from rich.rule import Rule
 
 console = Console()
 
-# --- Predictive Display Function (CLI Version) ---
+# --- Predictive Display Function (Unchanged) ---
 def show_predictive_report(rules_df: pd.DataFrame, horizon_str: str, show_volatility: bool = False):
     if rules_df.empty:
         console.print("[yellow]No predictive rules could be generated for this scenario.[/yellow]")
@@ -81,104 +81,65 @@ def show_predictive_report(rules_df: pd.DataFrame, horizon_str: str, show_volati
     console.print(table)
 
 
-# --- REFACTORED HISTORICAL DISPLAY FUNCTION ---
-def show_historical_report(report_df: pd.DataFrame, horizon_str: str, show_volatility: bool = False):
-    if report_df.empty:
-        console.print("[yellow]No historically high-certainty signals were found for this scenario.[/yellow]")
-        return None
+# --- STATELESS HISTORICAL PAGE RENDERER ---
+def render_historical_page(
+    page_df: pd.DataFrame,
+    page_title: str,
+    page_num: int,
+    total_pages: int,
+    horizon_str: str,
+    show_volatility: bool = False
+) -> Group:
+    """
+    Constructs a renderable Group for a single page of a historical report.
+    This function is now stateless and does not print to the console.
+    """
+    title_rule = Rule(f"[bold white on black] {page_title} [/]", style="magenta")
 
-    # Step 1: Split DataFrame into Pages
-    pages = []
-    page_titles = []
-    current_page_rows = []
+    df = page_df.rename(columns={'Signal_Feature': 'Signal', 'Signal_Interval': 'Signal Value'})
+    horizon_val = int(horizon_str.replace('M', ''))
     
-    # Corrected column name access
-    for _, row in report_df.iterrows():
-        if 'SIGNALS ACTIVE IN:' in str(row.get('Signal_Feature')):
-            if current_page_rows:
-                pages.append(pd.DataFrame(current_page_rows))
-            current_page_rows = []
-            page_titles.append(row['Signal_Feature'])
-        else:
-            current_page_rows.append(row)
-    if current_page_rows:
-        pages.append(pd.DataFrame(current_page_rows))
+    cols_to_keep = ['Signal', 'Signal Value', 'Occurrences', 'Hist. Prob. of Gain']
+    performance_cols = sorted(
+        [c for c in df.columns if 'Hist. Avg.' in c],
+        key=lambda x: int(re.search(r'(\d+)M', x).group(1)) if re.search(r'(\d+)M', x) else 0
+    )
+    for col in performance_cols:
+        match = re.search(r'(\d+)M', col)
+        if match and int(match.group(1)) <= horizon_val:
+            if 'Vol' in col and not show_volatility: continue
+            cols_to_keep.append(col)
+    
+    df = df[[col for col in cols_to_keep if col in df.columns]]
 
-    if not pages:
-        console.print("[yellow]No historical signals found to display.[/yellow]")
-        return None
-
-    # Step 2: Start Pagination Loop
-    current_page_index = 0
-    while True:
-        # The console is now cleared in main.py BEFORE this function is called.
-        # We only clear here when navigating between pages.
-        if current_page_index > 0: # Avoid clearing on the first page load
-            console.clear()
-
-        page_df = pages[current_page_index]
-        page_title = page_titles[current_page_index]
-
-        # Step 3: Render the page (with improved delimiter)
-        console.print(Rule(f"[bold white on black] {page_title} [/]", style="magenta"))
-
-        df = page_df.rename(columns={'Signal_Feature': 'Signal', 'Signal_Interval': 'Signal Value'})
-        horizon_val = int(horizon_str.replace('M', ''))
+    table = Table(show_header=True, header_style="bold magenta")
+    for col in df.columns: table.add_column(col)
         
-        cols_to_keep = ['Signal', 'Signal Value', 'Occurrences', 'Hist. Prob. of Gain']
-        performance_cols = sorted([c for c in df.columns if 'Hist. Avg.' in c], key=lambda x: int(re.search(r'(\d+)M', x).group(1)) if re.search(r'(\d+)M', x) else 0)
-        for col in performance_cols:
-            match = re.search(r'(\d+)M', col)
-            if match and int(match.group(1)) <= horizon_val:
-                if 'Vol' in col and not show_volatility: continue
-                cols_to_keep.append(col)
-        df = df[cols_to_keep]
+    cmap = plt.get_cmap('RdYlGn')
+    numeric_cols = [c for c in df.columns if 'Hist. Avg' in c]
+    all_vals = pd.to_numeric(df[numeric_cols].stack(), errors='coerce').dropna()
+    if not all_vals.empty:
+        vmin = -max(abs(all_vals.min()), abs(all_vals.max())) if all_vals.min() < 0 else all_vals.min()
+        vmax = max(abs(all_vals.min()), abs(all_vals.max())) if all_vals.min() < 0 else all_vals.max()
+        norm = plt.Normalize(vmin, vmax)
 
-        table = Table(show_header=True, header_style="bold magenta")
-        for col in df.columns: table.add_column(col)
+    for _, row in df.iterrows():
+        row_values = []
+        for col_name, value in row.items():
+            cell_style, display_val = "", str(value)
+            if numeric_cols and col_name in numeric_cols and pd.notna(value):
+                hex_color = matplotlib.colors.to_hex(cmap(norm(value)))
+                cell_style = f"on {hex_color}"
             
-        cmap = plt.get_cmap('RdYlGn')
-        numeric_cols = [c for c in df.columns if 'Hist. Avg' in c]
-        all_vals = pd.to_numeric(df[numeric_cols].stack(), errors='coerce').dropna()
-        if not all_vals.empty:
-            vmin = -max(abs(all_vals.min()), abs(all_vals.max())) if all_vals.min() < 0 else all_vals.min()
-            vmax = max(abs(all_vals.min()), abs(all_vals.max())) if all_vals.min() < 0 else all_vals.max()
-            norm = plt.Normalize(vmin, vmax)
-
-        for _, row in df.iterrows():
-            row_values = []
-            for col_name, value in row.items():
-                cell_style, display_val = "", str(value)
-                if numeric_cols and col_name in numeric_cols and pd.notna(value):
-                    hex_color = matplotlib.colors.to_hex(cmap(norm(value)))
-                    cell_style = f"on {hex_color}"
-                
-                if 'Signal Value' in col_name and isinstance(value, tuple): display_val = f"from {value[0]:.4f} to {value[1]:.4f}"
-                elif 'Prob. of Gain' in col_name and pd.notna(value): display_val = f"{value:.1%}"
-                elif 'ROI' in col_name and pd.notna(value): display_val = f"{value:+.1%}"
-                elif 'Vol' in col_name and pd.notna(value): display_val = f"{value:.2%}"
-                elif 'Occurrences' in col_name and pd.notna(value): display_val = f"{value:.0f}"
-                
-                row_values.append(f"[{cell_style}]{markup.escape(display_val)}[/]" if cell_style else markup.escape(display_val))
-            table.add_row(*row_values)
-        
-        console.print(table)
-        
-        # Step 4: Navigation Prompt
-        prompt_text = f"\nPage {current_page_index + 1} of {len(pages)}. "
-        choices = []
-        if current_page_index > 0: choices.append("P")
-        if current_page_index < len(pages) - 1: choices.append("N")
-        choices.append("Q")
-        
-        nav_prompt = " ".join([f"[{c}]" + ("revious" if c=='P' else "ext" if c=='N' else "uit") for c in choices])
-        action = Prompt.ask(nav_prompt, choices=[c.lower() for c in choices], default="q").lower()
-
-        if action == 'n':
-            current_page_index += 1
-            console.clear() # Clear before showing the next page
-        elif action == 'p':
-            current_page_index -= 1
-            console.clear() # Clear before showing the previous page
-        elif action == 'q':
-            return 'exit' # Return status to main loop
+            if 'Signal Value' in col_name and isinstance(value, tuple): display_val = f"from {value[0]:.4f} to {value[1]:.4f}"
+            elif 'Prob. of Gain' in col_name and pd.notna(value): display_val = f"{value:.1%}"
+            elif 'ROI' in col_name and pd.notna(value): display_val = f"{value:+.1%}"
+            elif 'Vol' in col_name and pd.notna(value): display_val = f"{value:.2%}"
+            elif 'Occurrences' in col_name and pd.notna(value): display_val = f"{value:.0f}"
+            
+            row_values.append(f"[{cell_style}]{markup.escape(display_val)}[/]" if cell_style else markup.escape(display_val))
+        table.add_row(*row_values)
+    
+    nav_text = Text(f"\nPage {page_num} of {total_pages}. Use A/D or ←/→ to navigate, Q to quit.", justify="center")
+    
+    return Group(title_rule, table, nav_text)
