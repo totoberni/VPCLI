@@ -1,17 +1,15 @@
 import typer
 from rich.console import Console
 from rich.prompt import Prompt
-
 from .core import constants
+from . import engine, display
 
-# Single Typer app instance to manage all commands
 app = typer.Typer(
     name="strategy-report",
     help="A CLI for generating hybrid predictive and historical investment strategies.",
     add_completion=False,
 )
 
-# Single Console instance for consistent styling
 console = Console()
 
 @app.command(help="Run the interactive strategy report generator.")
@@ -27,7 +25,6 @@ def run():
     console.print("[bold]First, select a company to investigate:[/bold]")
     console.print(company_prompt_text)
     company_idx = Prompt.ask("Enter selection", choices=list(constants.COMPANIES.keys()), default="2")
-
     selected_company_name = constants.COMPANIES[company_idx]
     selected_ticker = constants.COMPANY_TICKERS[company_idx]
 
@@ -39,23 +36,27 @@ def run():
     console.print("  " + " | ".join(constants.HISTORICAL_HORIZONS))
     selected_horizon = Prompt.ask("\nEnter horizon", choices=constants.ALL_HORIZONS, default="12M")
 
-    # --- 3. Orchestration (Prototype Logic) ---
+    # --- 3. Orchestration (Final Implementation) ---
     console.print("\n" + "="*50)
-    console.print("[bold green]Query Received![/bold green]")
-    console.print(f"  [bold]Company:[/bold] {selected_company_name}")
-    console.print(f"  [bold]Ticker:[/bold] {selected_ticker}")
-    console.print(f"  [bold]Horizon:[/bold] {selected_horizon}")
-    console.print("="*50)
+    console.print(f"[bold]Generating report for {selected_company_name} | {selected_horizon}...[/bold]")
+    console.print("="*50 + "\n")
+    
+    show_volatility = Prompt.ask("Include volatility estimates in the report?", choices=["y", "n"], default="n") == "y"
 
-    # This is where we will delegate to the engine in the future
-    if selected_horizon in constants.PREDICTIVE_HORIZONS:
-        console.print("\n[italic yellow]Routing to Predictive Engine... (Not Implemented)[/italic yellow]")
-        # Future call: report = engine.get_predictive_report(selected_ticker, selected_horizon)
-        # Future call: display.show_predictive_report(report)
-    else:
-        console.print("\n[italic yellow]Routing to Historical Engine... (Not Implemented)[/italic yellow]")
-        # Future call: report = engine.get_historical_report(selected_ticker, selected_horizon)
-        # Future call: display.show_historical_report(report)
+    try:
+        if selected_horizon in constants.PREDICTIVE_HORIZONS:
+            console.print("[italic yellow]Running predictive simulation...[/italic yellow]\n")
+            report_data = engine.get_predictive_report(selected_ticker, selected_horizon, show_volatility)
+            display.show_predictive_report(report_data, selected_horizon, show_volatility)
+        else:
+            console.print("[italic yellow]Fetching historical analysis...[/italic yellow]\n")
+            report_data = engine.get_historical_report(selected_ticker, selected_horizon)
+            display.show_historical_report(report_data, selected_horizon, show_volatility)
+    except FileNotFoundError as e:
+        console.print(f"[bold red]Error:[/bold red] {e}")
+        console.print("[yellow]Please ensure all required .pkl artifacts are present in the 'assets' directory.[/yellow]")
+    except Exception as e:
+        console.print(f"[bold red]An unexpected error occurred:[/bold red] {e}")
 
 if __name__ == "__main__":
     app()

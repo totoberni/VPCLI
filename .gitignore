@@ -63,3 +63,7 @@ venv.bak/
 .idea/
 .vscode/
 .cursor/
+
+# Assets
+assets/
+*.pkl
