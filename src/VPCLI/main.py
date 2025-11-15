@@ -8,12 +8,13 @@ app = typer.Typer(
     name="strategy-report",
     help="A CLI for generating hybrid predictive and historical investment strategies via an interactive session.",
     add_completion=False,
-    rich_markup_mode="markdown"  # Enable markdown for prettier help text
+    rich_markup_mode="markdown"
 )
 
 console = Console()
 
 def _select_company():
+    console.clear()
     company_prompt_text = "\n".join([f"  [bold yellow]{key}[/bold yellow]: {name}" for key, name in constants.COMPANIES.items()])
     console.print("[bold]First, select a company to investigate:[/bold]")
     console.print(company_prompt_text)
@@ -47,6 +48,8 @@ def run():
     selected_company_name, selected_ticker = _select_company()
 
     while True:
+        console.clear()
+        console.print(f"[bold]Company selected: [green]{selected_company_name}[/green][/bold]")
         selected_horizon = _select_horizon()
 
         console.print("\n" + "="*50)
@@ -55,7 +58,9 @@ def run():
         
         show_volatility = Prompt.ask("Include volatility estimates in the report?", choices=["y", "n"], default="n") == "y"
 
+        display_status = None
         try:
+            console.clear()
             if selected_horizon in constants.PREDICTIVE_HORIZONS:
                 console.print("[italic yellow]Running predictive simulation...[/italic yellow]\n")
                 report_data = engine.get_predictive_report(selected_ticker, selected_horizon, show_volatility)
@@ -63,12 +68,17 @@ def run():
             else:
                 console.print("[italic yellow]Fetching historical analysis...[/italic yellow]\n")
                 report_data = engine.get_historical_report(selected_ticker, selected_horizon)
-                display.show_historical_report(report_data, selected_horizon, show_volatility)
+                display_status = display.show_historical_report(report_data, selected_horizon, show_volatility)
         except FileNotFoundError as e:
             console.print(f"[bold red]Error:[/bold red] {e}")
             console.print("[yellow]Please ensure all required .pkl artifacts are present in the 'assets' directory.[/yellow]")
         except Exception as e:
             console.print(f"[bold red]An unexpected error occurred:[/bold red] {e}")
+
+        # If the user chose to quit the pager, exit the whole app
+        if display_status == 'exit':
+             console.print("\n[bold cyan]Exiting Strategy Engine. Goodbye![/bold cyan]")
+             break
 
         console.print("\n" + "="*50)
         next_action = Prompt.ask("What's next?", choices=["New Horizon", "New Company", "Exit"], default="Exit")
@@ -77,7 +87,6 @@ def run():
             console.print("\n[bold cyan]Exiting Strategy Engine. Goodbye![/bold cyan]")
             break
         elif next_action == "New Company":
-            console.print("-" * 50)
             selected_company_name, selected_ticker = _select_company()
         # If "New Horizon", the loop continues with the same company
 

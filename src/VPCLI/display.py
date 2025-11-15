@@ -85,15 +85,16 @@ def show_predictive_report(rules_df: pd.DataFrame, horizon_str: str, show_volati
 def show_historical_report(report_df: pd.DataFrame, horizon_str: str, show_volatility: bool = False):
     if report_df.empty:
         console.print("[yellow]No historically high-certainty signals were found for this scenario.[/yellow]")
-        return
+        return None
 
-    # --- Step 1: Split DataFrame into Pages ---
+    # Step 1: Split DataFrame into Pages
     pages = []
     page_titles = []
     current_page_rows = []
     
+    # Corrected column name access
     for _, row in report_df.iterrows():
-        if 'SIGNALS ACTIVE IN:' in str(row['Signal_Feature']):
+        if 'SIGNALS ACTIVE IN:' in str(row.get('Signal_Feature')):
             if current_page_rows:
                 pages.append(pd.DataFrame(current_page_rows))
             current_page_rows = []
@@ -105,23 +106,27 @@ def show_historical_report(report_df: pd.DataFrame, horizon_str: str, show_volat
 
     if not pages:
         console.print("[yellow]No historical signals found to display.[/yellow]")
-        return
+        return None
 
-    # --- Step 2: Start Pagination Loop ---
+    # Step 2: Start Pagination Loop
     current_page_index = 0
     while True:
-        console.clear()
+        # The console is now cleared in main.py BEFORE this function is called.
+        # We only clear here when navigating between pages.
+        if current_page_index > 0: # Avoid clearing on the first page load
+            console.clear()
+
         page_df = pages[current_page_index]
         page_title = page_titles[current_page_index]
 
-        # --- Step 3: Render the page (with improved delimiter) ---
+        # Step 3: Render the page (with improved delimiter)
         console.print(Rule(f"[bold white on black] {page_title} [/]", style="magenta"))
 
         df = page_df.rename(columns={'Signal_Feature': 'Signal', 'Signal_Interval': 'Signal Value'})
         horizon_val = int(horizon_str.replace('M', ''))
         
         cols_to_keep = ['Signal', 'Signal Value', 'Occurrences', 'Hist. Prob. of Gain']
-        performance_cols = sorted([c for c in df.columns if 'Hist. Avg.' in c], key=lambda x: int(re.search(r'(\d+)M', x).group(1)))
+        performance_cols = sorted([c for c in df.columns if 'Hist. Avg.' in c], key=lambda x: int(re.search(r'(\d+)M', x).group(1)) if re.search(r'(\d+)M', x) else 0)
         for col in performance_cols:
             match = re.search(r'(\d+)M', col)
             if match and int(match.group(1)) <= horizon_val:
@@ -159,7 +164,7 @@ def show_historical_report(report_df: pd.DataFrame, horizon_str: str, show_volat
         
         console.print(table)
         
-        # --- Step 4: Navigation Prompt ---
+        # Step 4: Navigation Prompt
         prompt_text = f"\nPage {current_page_index + 1} of {len(pages)}. "
         choices = []
         if current_page_index > 0: choices.append("P")
@@ -169,6 +174,11 @@ def show_historical_report(report_df: pd.DataFrame, horizon_str: str, show_volat
         nav_prompt = " ".join([f"[{c}]" + ("revious" if c=='P' else "ext" if c=='N' else "uit") for c in choices])
         action = Prompt.ask(nav_prompt, choices=[c.lower() for c in choices], default="q").lower()
 
-        if action == 'n': current_page_index += 1
-        elif action == 'p': current_page_index -= 1
-        elif action == 'q': break
+        if action == 'n':
+            current_page_index += 1
+            console.clear() # Clear before showing the next page
+        elif action == 'p':
+            current_page_index -= 1
+            console.clear() # Clear before showing the previous page
+        elif action == 'q':
+            return 'exit' # Return status to main loop
