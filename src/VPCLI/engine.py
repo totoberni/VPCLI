@@ -6,6 +6,7 @@ from typing import Dict, Any, List, Tuple
 from collections import defaultdict
 import pandas as pd
 import numpy as np
+from .core import constants
 
 # --- State Management & Artifact Loading ---
 _cache: Dict[str, Any] = {}
@@ -121,30 +122,107 @@ def get_predictive_report(ticker: str, horizon_str: str, show_volatility: bool =
     rules_df.attrs['path_horizons'] = path_horizons
     return rules_df
 
-def get_historical_pages(ticker: str, horizon_str: str) -> Tuple[List[pd.DataFrame], List[str]]:
+# --- REFACTORED Historical Report Engine Logic ---
+def get_monthly_signal_summary(
+    ticker: str, horizon_str: str
+) -> List[Tuple[pd.Timestamp, pd.DataFrame]]:
     """
-    Loads and splits the historical report into a list of pages and titles.
+    Loads, processes, and aggregates historical signal data by month.
     """
-    historical_reports = _load_artifact('historical_certainty_reports.pkl')
-    
-    if ticker not in historical_reports or horizon_str not in historical_reports[ticker]:
-        return [], []
-        
-    report_df = historical_reports[ticker][horizon_str]
-    
-    pages = []
-    page_titles = []
-    current_page_rows = []
-    
-    for _, row in report_df.iterrows():
-        if 'SIGNALS ACTIVE IN:' in str(row.get('Signal_Feature')):
-            if current_page_rows:
-                pages.append(pd.DataFrame(current_page_rows))
-            current_page_rows = []
-            page_titles.append(row['Signal_Feature'])
-        else:
-            current_page_rows.append(row)
-    if current_page_rows:
-        pages.append(pd.DataFrame(current_page_rows))
+    # 1. Load all necessary artifacts
+    historical_reports = _load_artifact("historical_certainty_reports.pkl")
+    engine_dfs = _load_artifact("engine_dfs_engineered.pkl")
 
-    return pages, page_titles
+    if (
+        ticker not in historical_reports
+        or horizon_str not in historical_reports[ticker]
+        or ticker not in engine_dfs
+    ):
+        return []
+
+    # 2. Filter raw report for unique, high-certainty signals
+    raw_report_df = historical_reports[ticker][horizon_str]
+    raw_report_df = raw_report_df[
+        ~raw_report_df["Signal_Feature"].astype(str).str.contains("SIGNALS ACTIVE IN:", na=False)
+    ].copy()
+    unique_signals_df = raw_report_df.groupby(
+        ["Signal_Feature", "Signal_Interval"]
+    ).size().reset_index(name="count")
+
+    # 3. Map all historical occurrences of these signals
+    all_occurrences = []
+    company_df = engine_dfs[ticker].copy()
+    company_df.reset_index(inplace=True)
+    company_df['Period'] = pd.to_datetime(company_df['Period'])
+    max_date = company_df['Period'].max()
+
+    for _, signal in unique_signals_df.iterrows():
+        feature = signal["Signal_Feature"]
+        interval = signal["Signal_Interval"]
+        occurrences = company_df[
+            company_df[feature].between(interval[0], interval[1], inclusive="both")
+        ].copy()
+        
+        # CORRECTED: Assign values in a way that pandas handles correctly by matching the index length.
+        occurrences["Signal_Feature"] = [feature] * len(occurrences)
+        occurrences["Signal_Interval"] = [interval] * len(occurrences)
+        all_occurrences.append(occurrences)
+
+    if not all_occurrences:
+        return []
+
+    master_df = pd.concat(all_occurrences, ignore_index=True)
+
+    # 4. Defensive Horizon Cutoff: Invalidate impossible future ROIs
+    horizon_months = int(horizon_str.replace("M", ""))
+    target_return_col = f"Future_Return_{horizon_str}"
+    
+    # Vectorized approach for performance
+    master_df['cutoff_date'] = master_df['Period'] + pd.DateOffset(months=horizon_months)
+    master_df.loc[master_df['cutoff_date'] > max_date, target_return_col] = np.nan
+    master_df.drop(columns=['cutoff_date'], inplace=True)
+
+
+    # 5. Group by month and aggregate signals
+    monthly_groups = master_df.groupby(pd.Grouper(key="Period", freq="ME"))
+    
+    monthly_summaries = []
+    for month, month_df in monthly_groups:
+        if month_df.empty:
+            continue
+
+        agg_funcs = {
+            target_return_col: [
+                "mean", "min", "max", "std", 
+                lambda x: np.nansum(x > 0), 
+                lambda x: np.nansum(x <= 0)
+            ]
+        }
+        agg_df = month_df.groupby(["Signal_Feature", "Signal_Interval"]).agg(agg_funcs).reset_index()
+        agg_df.columns = ["_".join(col).strip() for col in agg_df.columns.values]
+        
+        rename_map = {
+            "Signal_Feature_": "Signal_Feature",
+            "Signal_Interval_": "Signal_Interval",
+            f"{target_return_col}_mean": f"Hist. Avg. ROI @ {horizon_str}",
+            f"{target_return_col}_min": f"Min ROI @ {horizon_str}",
+            f"{target_return_col}_max": f"Max ROI @ {horizon_str}",
+            f"{target_return_col}_std": f"Std Dev ROI @ {horizon_str}",
+            f"{target_return_col}_<lambda_0>": "Win_Count",
+            f"{target_return_col}_<lambda_1>": "Loss_Count"
+        }
+        agg_df = agg_df.rename(columns=rename_map)
+        
+        agg_df["Occurrences"] = agg_df["Win_Count"] + agg_df["Loss_Count"]
+        agg_df["Win_Rate"] = (agg_df["Win_Count"] / agg_df["Occurrences"]).fillna(0)
+        agg_df["Win/Loss Ratio"] = [
+            f"{wr:.1%} ({int(w)} W / {int(l)} L)"
+            for wr, w, l in zip(agg_df["Win_Rate"], agg_df["Win_Count"], agg_df["Loss_Count"])
+        ]
+        
+        # Only add the monthly summary if it contains actual data
+        if agg_df["Occurrences"].sum() > 0:
+            final_month_df = agg_df.sort_values(by=["Win_Rate", "Occurrences"], ascending=[False, False])
+            monthly_summaries.append((month, final_month_df))
+
+    return sorted(monthly_summaries, key=lambda x: x[0], reverse=True)

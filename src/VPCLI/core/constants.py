@@ -10,6 +10,12 @@ COMPANY_TICKERS = {
     for key, name in COMPANIES.items()
 }
 
+PAGE_SIZE = 20
+
 PREDICTIVE_HORIZONS = ["1M", "3M", "6M", "12M", "18M", "24M", "36M"]
-HISTORICAL_HORIZONS = ["48M", "60M", "72M", "84M"]
+
+# REVERTED: Only include historical horizons that are supported by the data artifacts,
+# while excluding the problematic 84M horizon.
+HISTORICAL_HORIZONS = ["48M", "60M", "72M"]
+
 ALL_HORIZONS = PREDICTIVE_HORIZONS + HISTORICAL_HORIZONS

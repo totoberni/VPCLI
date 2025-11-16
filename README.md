@@ -1,3 +1,4 @@
+Error: it seems the main.py is not able to diractly clear the whole historic console chat. When we call console.clear() we don't delete the past outputs, which may be stored elsewhere or just not accessible from the main loop.
 
 # Financial Strategist CLI
 
