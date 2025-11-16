@@ -67,3 +67,4 @@ venv.bak/
 # Assets
 assets/
 *.pkl
+*plan*

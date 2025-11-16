@@ -3,35 +3,41 @@ import pickle
 import warnings
 from typing import Any, Dict
 
-# This will be the single source of truth for the assets directory path.
-ASSETS_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "..", "assets")
+# This cache will be shared across the application to avoid reloading large files.
+_asset_cache: Dict[str, Any] = {}
 
-# This cache will be shared by all calls to load_artifact.
-_cache: Dict[str, Any] = {}
-
-
-def load_artifact(filename: str) -> Any:
+def load_artifact(artifact_name: str) -> Any:
     """
-    Loads a .pkl artifact from the assets directory, with in-memory caching.
+    Loads a data artifact (like a .pkl file) from the assets directory.
     
-    Surpresses UserWarning which can be present in older pickle files.
+    This function uses an environment variable `VPCLI_ASSETS_DIR` to locate the
+    assets directory, making it compatible with both local development and
+    Docker deployments. It falls back to a relative path for local use.
     """
-    if filename in _cache:
-        return _cache[filename]
+    # --- FIX: Determine the path inside the function at runtime ---
+    # This is more robust and ensures the environment variable is always read
+    # when the function is called, not when the module is first imported.
+    assets_dir = os.getenv(
+        "VPCLI_ASSETS_DIR",
+        os.path.join(os.path.dirname(__file__), "..", "..", "..", "assets")
+    )
+    
+    artifact_path = os.path.join(assets_dir, artifact_name)
 
-    path = os.path.join(ASSETS_DIR, filename)
-    if not os.path.exists(path):
-        print(f"FATAL ERROR: Artifact '{filename}' not found in '{ASSETS_DIR}'")
-        raise FileNotFoundError(f"Missing required asset: {filename}")
+    if artifact_name in _asset_cache:
+        return _asset_cache[artifact_name]
 
+    if not os.path.exists(artifact_path):
+        # Provide a cleaner, more direct error message
+        raise FileNotFoundError(
+            f"FATAL ERROR: Missing required asset '{artifact_name}' in '{assets_dir}'"
+        )
+    
     try:
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore", category=UserWarning)
-            with open(path, "rb") as f:
-                artifact = pickle.load(f)
-
-        _cache[filename] = artifact
-        return artifact
+        with open(artifact_path, "rb") as f:
+            artifact = pickle.load(f)
+            _asset_cache[artifact_name] = artifact
+            return artifact
     except Exception as e:
-        print(f"ERROR: Failed to load artifact '{filename}'. Reason: {e}")
-        raise
+        warnings.warn(f"Could not load artifact {artifact_name}: {e}")
+        return None

@@ -10,7 +10,6 @@ dependencies = [
     # --- Core Data & ML Libraries (Pinned for compatibility) ---
     "pandas == 2.3.3",
     "xgboost-cpu == 3.1.1",
-    "scikit-learn == 1.7.2",
     "numpy == 2.3.4",
 
     # --- Important Transitive Dependencies (Pinned for safety) ---
