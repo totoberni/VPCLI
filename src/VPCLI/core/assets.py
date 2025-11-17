@@ -34,10 +34,15 @@ def load_artifact(artifact_name: str) -> Any:
         )
     
     try:
-        with open(artifact_path, "rb") as f:
-            artifact = pickle.load(f)
-            _asset_cache[artifact_name] = artifact
-            return artifact
+        # --- FIX: Suppress expected UserWarnings from XGBoost ---
+        # This prevents warnings about GPU/CPU mismatches from being shown,
+        # as they are expected in this application's workflow.
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", category=UserWarning)
+            with open(artifact_path, "rb") as f:
+                artifact = pickle.load(f)
+                _asset_cache[artifact_name] = artifact
+                return artifact
     except Exception as e:
         warnings.warn(f"Could not load artifact {artifact_name}: {e}")
         return None

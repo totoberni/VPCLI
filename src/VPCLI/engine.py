@@ -7,32 +7,10 @@ from collections import defaultdict
 import pandas as pd
 import numpy as np
 from .core import constants
+from .core.assets import load_artifact as _load_artifact
 
 # --- State Management & Artifact Loading ---
 _cache: Dict[str, Any] = {}
-ASSETS_DIR = os.path.join(os.path.dirname(__file__), '..', '..', 'assets')
-
-def _load_artifact(filename: str) -> Any:
-    """Loads a .pkl artifact from the assets directory, with caching."""
-    if filename in _cache:
-        return _cache[filename]
-    
-    path = os.path.join(ASSETS_DIR, filename)
-    if not os.path.exists(path):
-        print(f"FATAL ERROR: Artifact {filename} not found in {ASSETS_DIR}")
-        raise FileNotFoundError(f"Missing required asset: {filename}")
-    
-    try:
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore", category=UserWarning)
-            with open(path, 'rb') as f:
-                artifact = pickle.load(f)
-        
-        _cache[filename] = artifact
-        return artifact
-    except Exception as e:
-        print(f"ERROR loading {filename}: {e}")
-        raise
 
 # --- Logic Transplanted from Notebook ---
 def simulate_investment_path(ticker_pipelines, modeling_datasets_ticker, path_horizons, top_n_features=5, show_volatility=False):
