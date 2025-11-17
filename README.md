@@ -1,8 +1,8 @@
 # Oxygen-Analytics: Financial Strategy CLI
 
-## 0. Project Overview
+## Project Overview
 
-This command-line interface (VP-CLI) is the user-facing application for the `Oxygen-Analytics` engine, a sophisticated tool designed to provide data-driven investment strategies for a portfolio of tech stocks (Apple, NVIDIA, Google) to a client. It leverages time-series analysis and machine learning to analyze the impact of financial sentiment on future stock performance.
+This command-line interface (CLI) is the user-facing application for the `Oxygen-Analytics` engine, a sophisticated tool designed to provide data-driven investment strategies for a portfolio of tech stocks (Apple, NVIDIA, Google) to a client of VP Analytics'. The tool, dubbed `VPCLI` leverages time-series analysis and machine learning to analyze the impact of financial sentiment on future stock performance.
 
 The tool provides a hybrid analysis, offering two distinct types of strategic recommendations based on the user's selected investment horizon:
 1.  **Predictive Recommendations (1M-36M):** For shorter timeframes, the CLI runs a live simulation using pre-trained XGBoost models to forecast a range of potential outcomes for various investment signals.
