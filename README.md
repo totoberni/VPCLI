@@ -18,17 +18,15 @@ This application is designed to be run as a self-contained Docker container, whi
 1.  **Pull the Image:**
     Download the latest version of the application image from Docker Hub.
     ```bash
-    docker pull <your-dockerhub-username>/vpcli:latest
+    docker pull ortabel/vpcli:latest
     ```
 2.  **Run the Container:**
     Run the application in an interactive terminal session.
     ```bash
-    docker run --rm -it <your-dockerhub-username>/vpcli:latest
+    docker run --rm -it ortabel/vpcli:latest
     ```
     * The `--rm` flag removes the image from cached memory as soon as you finish using the CLI.
     * The `-it` flag is necessary, it tells Docker you want to *interact* with the CLI through the same terminal.
-
-> `Note:` it is **not necessary** to include your dockerhub username. Commands will work fine without it as well.
 
 ---
 
